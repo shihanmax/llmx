@@ -1,0 +1,6 @@
+transformers==4.33.0
+peft==0.6.0
+accelerate>=0.20.3
+deepspeed==0.9.3
+transformers_stream_generator
+tiktoken

@@ -1,0 +1,21 @@
+accelerate config
+accelerate launch ../runner/run_train.py \
+    --dataset_name demo_movie_pt \
+    --model_name_or_path /path/to/chatglm2-6b \
+    --output_dir ../debugging/pt_test \
+    --training_stage pt \
+    --parameter_mode lora \
+    --lora_target query_key_value \
+    --max_seq_len 100 \
+    --do_train true \
+    --learning_rate 5e-4 \
+    --num_train_epochs 10.0 \
+    --lr_scheduler_type cosine \
+    --save_steps 10 \
+    --report_to tensorboard \
+    --logging_steps 2 \
+    --ddp_find_unused_parameters false \
+    --per_device_train_batch_size 2 \
+    --gradient_accumulation_steps 4 \
+    --overwrite_output_dir \
+    --fp16

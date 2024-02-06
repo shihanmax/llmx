@@ -1,0 +1,21 @@
+accelerate config
+accelerate launch ../runner/run_train.py \
+    --dataset_name demo_sft \
+    --model_name_or_path /path/to/chatglm2-6b \
+    --output_dir ../debugging/0119_sft_test \
+    --training_stage sft \
+    --parameter_mode lora \
+    --lora_target query_key_value \
+    --max_seq_len 100 \
+    --do_train true \
+    --learning_rate 5e-4 \
+    --num_train_epochs 20.0 \
+    --lr_scheduler_type cosine \
+    --save_steps 10 \
+    --report_to tensorboard \
+    --logging_steps 2 \
+    --ddp_find_unused_parameters false \
+    --per_device_train batch size 2 \
+    --gradient_accumulation_steps 4 \
+    --overwrite_output_dir \
+    --fp16

@@ -1,0 +1,25 @@
+accelerate config
+accelerate launch ../runner/run_train.py \
+    --dataset_name demo_dpo \
+    --model_name_or_path /path/to/chatglm2-6b \
+    --chat_format chatglm2 \
+    --output_dir ../debugging/0125_chatglm2_dpo_test \
+    --training_stage dpo \
+    --dpo_beta 0.1 \
+    --dpo_loss_type sigmoid \
+    --parameter_mode lora \
+    --lora_target query_key_value \
+    --max_seq_len 3000 \
+    --do_train true \
+    --learning_rate 5e-4 \
+    --num_train_epochs 5.0 \
+    --lr_scheduler_type cosine \
+    --save_steps 100 \
+    --report_to tensorboard \
+    --logging_steps 10 \
+    --ddp_find_unused_parameters false \
+    --per_device_train_batch_size 2 \
+    --gradient_accumulation_steps 2 \
+    --remove_unused_columns false \
+    --overwrite_output_dir \
+    --fp16
