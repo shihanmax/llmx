@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 from accelerate import Accelerator
@@ -9,8 +10,44 @@ from transformers import (
 
 logger = logging.getLogger(__name__)
 
-
-class ModelHandler(object):
+def scaling_rope(config, model_args, data_args):
+    """
+    ref: https://www.reddit.com/r/LocalLLaMA/comments/14mrgpr/dynamically_scaled_rope_further_increases/
+    
+    ref: https://github.com/hiyouga/LLaMA-Factory/blob/main/src/llamafactory/model/model_utils/rope.py
+    """
+    if not model_args.rope_scaling:
+        logger.info(f"Will not scaling RoPE")
+        return
+    
+    if not hasattr(config, "rope_scaling"):
+        logger.warning(f"curr model not support RoPE scaling")
+    
+    scaling_factor = 1.0
+    if data_args.max_seq_len:
+        curr_max_len = getattr(config, "max_position_embedding", None)
+        if curr_max_len:
+            if data_args.max_seq_len > curr_max_len:
+                logger.info(f"extend model max len to:{data_args.max_seq_len}")
+                setattr(
+                    config, "max_position_embedding", data_args.max_seq_len,
+                )
+                scaling_factor = float(
+                    math.ceil(data_args.max_seq_len / curr_max_len)
+                )
+            else:
+                logger.warning(
+                    "curr model already supportted max len: "
+                    f"{data_args.max_seq_len}"
+                )
+    setattr(
+        config, "rope_scaling", 
+        {"type": model_args.rope_scaling, "factor": scaling_factor},
+    )
+    logger.info(f"adopt scaling factor: {scaling_factor}")
+    
+        
+class ModelLoader(object):
 
     @classmethod
     def patch_tokenizer(cls, tokenizer):
@@ -22,7 +59,11 @@ class ModelHandler(object):
             tokenizer.pad_token = tokenizer.eos_token
 
     @classmethod
-    def load_config_and_tokenizer(cls, model_args):
+    def patch_config(cls, config, model_args, data_args):
+        scaling_rope(config, model_args, data_args)
+    
+    @classmethod
+    def load_config_and_tokenizer(cls, model_args, data_args):
         default_args = {
             "trust_remote_code": True,
             "cache_dir": model_args.cache_dir,
@@ -32,6 +73,8 @@ class ModelHandler(object):
             model_args.model_name_or_path, **default_args
         )
 
+        cls.patch_config(config, model_args, data_args)
+        
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
             use_fast=model_args.use_fast_tokenizer,
@@ -45,8 +88,10 @@ class ModelHandler(object):
         return config, tokenizer
     
     @classmethod
-    def load_with_default(cls, model_args, finetuning_args):
-        config, tokenizer = cls.load_config_and_tokenizer(model_args)
+    def _load(
+        cls, model_args, training_args, finetuning_args, data_args, peft_args,
+    ):
+        config, tokenizer = cls.load_config_and_tokenizer(model_args, data_args)
         
         if finetuning_args.qlora:
             bnb_config = BitsAndBytesConfig(
@@ -62,6 +107,11 @@ class ModelHandler(object):
             )
 
         else:
+            default_args = {
+                "trust_remote_code": True,
+                "cache_dir": model_args.cache_dir,
+            }
+            
             model = AutoModelForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
@@ -87,7 +137,9 @@ class ModelHandler(object):
         return model, config, tokenizer
 
     @classmethod
-    def prepare_model(cls, model_args, training_args, peft_args, finetuning_args):
+    def prepare_model(
+        cls, model_args, training_args, finetuning_args, data_args, peft_args, 
+    ):
         """Prepare model and tokenizer."""
 
         do_train = training_args.do_train
@@ -103,18 +155,14 @@ class ModelHandler(object):
             patch_llama_attn(
                 use_flash_attn=True, use_full=False, inference=not do_train
             )
-
-        if finetuning_args.qlora:
-            pass
-        else:
         
-        model, config, tokenizer = cls.load_with_default(
-            model_args, finetuning_args,
+        model, config, tokenizer = cls._load(
+            model_args, finetuning_args, data_args, peft_args
         )
 
         if finetuning_args.training_stage == "dpo":
             # create a ref model for dpo
-            ref_model, _* = cls.load_model_config_tokenizer(model_args)
+            ref_model, *_ = cls._load(model_args)
         else:
             ref_model = None
     
@@ -123,8 +171,7 @@ class ModelHandler(object):
             
         return ref_model, model, tokenizer
 
-
-    @classmethdo
+    @classmethod
     def merge_adapter(cls, model_args, finetuning_args):
         default_args = {
             "trust_remote_code": True,

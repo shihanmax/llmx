@@ -11,18 +11,27 @@ class ModelArguments:
         default="~/.llmx_cache/",
         metadata={"help": ""}
     )
+    
     model_name_or_path: Optional[str] = field(
         default=None,
         metadata={"help": ""}
     )
+    
     use_fast_tokenizer: Optional[bool] = field(
         default=True,
         metadata={"help": ""}
     )
+    
     split_special_tokens: Optional[bool] = field(
         default=False,
         metadata={"help": ""}
     )
+    
+    rope_scaling: Optional[str] = field(
+        default=None,
+        metadata={"help": "rope scaling method, ref: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/configuration_llama.py#L29"}
+    )
+    
     flash_attn: Optional[bool] = field(
         default=False,
         metadata={"help": ""}
