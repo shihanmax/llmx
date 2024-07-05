@@ -1,8 +1,11 @@
 import json
+import logging
 import os
 import re
 from typing import List, Literal, Optional
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -31,6 +34,21 @@ class FinetuningArguments:
         metadata={"help": "full, lora"}
     )
     
+    qlora: Optional[bool] = field(
+        default=False,
+        metadata={"help": "enable QLoRA"}
+    )
+
+    bnb_4bit_quant_type: Optional[str] = field(
+        default="nf4",
+        metadata={"help": "QLoRA: bnb_4bit_quant_type"}
+    )
+    
+    bnb_4bit_use_double_quant: Optional[bool] = field(
+        default=False,
+        metadata={"help": "QLoRA: use_double_quant"}
+    )
+    
     checkpoint_dir: Optional[str] = field(
         default=None,
         metadata={"help": "Path to save the checkpoints"}
@@ -38,7 +56,7 @@ class FinetuningArguments:
     
     merged_dir: Optional[str] = field(
         default=None,
-        metadata={"help": "Path to save the merged mode1"}
+        metadata={"help": "Path to save the merged model"}
     )
     
     max_shard_size: Optional[str] = field(
@@ -80,3 +98,8 @@ class FinetuningArguments:
             self.device_ids = [i for i in range(int(start), int(end) + 1)]
         else:
             self.device_ids = [int(i) for i in self.device_ids.split(",")]
+
+        # parameter checking
+        if self.qlora and self.parameter_mode != "lora":
+            logger.warning("qlora requres parameter_mode == 'lora'")
+            self.parameter_mode = "lora"

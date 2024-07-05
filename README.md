@@ -16,6 +16,15 @@
 
 支持Chat models对应的base版本（请将参数`chat_format`参数设置为`base`）。
 
+
+**版本要求**
+
+|   | requirements |
+|-------|--------------|
+| QLoRA | CUDA>=11.2   |
+|       |              |
+
+
 ## 快速开始
 
 **环境安装**
@@ -25,6 +34,7 @@ conda create -n llmx python==3.9 && conda activate llmx
 git clone https://github.com/shihanmax/llmx.git
 cd llmx && pip install -r requirements.txt
 ```
+
 
 参考下文`训练数据格式`准备训练数据（目前支持sft（有监督微调）、pt（预训练）、dpo（直接偏好优化）），示例数据分别对应着`llmx/resource/data/`目录下的sft_demo、pt_demo、dpo_demo。
 
@@ -209,25 +219,3 @@ python ../runner/run_generate.py \
 ]
 
 ```
-
-## Plans
-| 类型            | 任务                                           | 状态 | 优先级 | 备注 |
-|-----------------|------------------------------------------------|------|--------|------|
-| pipeline优化    | 根据权重模型名，自动推断lora target，formatter |      | 2      |      |
-| pipeline优化    | torch_dtype自动推断(model_loader ～L40)        |      | 3      |      |
-| param-efficient | full                                           | ✅    |        |      |
-| param-efficient | LoRA                                           | ✅    |        |      |
-| param-efficient | LongLoRA                                       |      | 0      |      |
-| param-efficient | QLoRA                                          |      | 0      |      |
-| data            | 多轮history支持                                | ✅    |        |      |
-| data            | non-chat模式支持（plain model）                | ✅    |        |      |
-| data            | 收集benchmark数据集                            |      | 3      |      |
-| bugifx          | demo（chat）bug（多轮对话session）             |      | 3      |      |
-| 训练方法        | dpo                                            | ✅    |        |      |
-| 训练方法        | pt                                             | ✅    |        |      |
-| 训练方法        | sft                                            | ✅    |        |      |
-| 训练方法        | ppo                                            |      | 1      |      |
-| 训练方法        | rm                                             |      | 1      |      |
-| 工具调用        | chatglm3工具调用支持                           |      | 3      |      |
-| 并行训练        | 单机多卡                                       | ✅    |        |      |
-| 并行训练        | 多机多卡                                       |      | 3      |      |

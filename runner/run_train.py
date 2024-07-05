@@ -7,7 +7,7 @@ from trl import DPOTrainer
 
 sys.path.append("../..")
 from llmx.args.parser import parse_args
-from llmx.model.model_loader import prepare_model
+from llmx.model.model_loader import ModelHandler 
 from llmx.data.data_loader import prepare_data
 from llmx.utils.patches.dpo_trainer_patch import patch_dpo_trainer
 
@@ -34,7 +34,7 @@ training_args, data_args, finetuning_args, generating_args, model_args, \
     peft_args = parse_args(on_train=True)
 
 # 2. prepare model, tokenizer, etc,.
-ref_model, model, tokenizer = prepare_model(
+ref_model, model, tokenizer = ModelHandler.prepare_model(
     model_args, training_args, peft_args, finetuning_args,
 )
 

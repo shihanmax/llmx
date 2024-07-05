@@ -6,6 +6,8 @@ accelerate launch ../runner/run_train.py \
     --training_stage sft \
     --parameter_mode lora \
     --lora_target query_key_value \
+    --qlora \
+    --bnb_4bit_quant_type nf4 \
     --max_seq_len 100 \
     --do_train true \
     --learning_rate 5e-4 \

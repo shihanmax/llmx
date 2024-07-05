@@ -4,3 +4,4 @@ accelerate>=0.20.3
 deepspeed==0.9.3
 transformers_stream_generator
 tiktoken
+bitsandbytes==0.39.0

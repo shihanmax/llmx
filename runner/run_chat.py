@@ -13,6 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# TODO: 合并至ModelHandler
 def prepare_model_and_tokenizer(model_args, device):
     model = AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
