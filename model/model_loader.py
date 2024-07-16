@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 def scaling_rope(config, model_args, data_args):
     """
-    ref: https://www.reddit.com/r/LocalLLaMA/comments/14mrgpr/dynamically_scaled_rope_further_increases/
-    
-    ref: https://github.com/hiyouga/LLaMA-Factory/blob/main/src/llamafactory/model/model_utils/rope.py
+    ref: 
+        - https://www.reddit.com/r/LocalLLaMA/comments/14mrgpr/dynamically_scaled_rope_further_increases/
+        - https://github.com/hiyouga/LLaMA-Factory/blob/main/src/llamafactory/model/model_utils/rope.py
     """
     if not model_args.rope_scaling:
         logger.info(f"Will not scaling RoPE")
@@ -25,7 +25,9 @@ def scaling_rope(config, model_args, data_args):
     
     scaling_factor = 1.0
     if data_args.max_seq_len:
+        # curr_max_len: max position embedding base model supports
         curr_max_len = getattr(config, "max_position_embedding", None)
+        
         if curr_max_len:
             if data_args.max_seq_len > curr_max_len:
                 logger.info(f"extend model max len to:{data_args.max_seq_len}")

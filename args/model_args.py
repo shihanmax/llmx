@@ -29,7 +29,7 @@ class ModelArguments:
     
     rope_scaling: Optional[str] = field(
         default=None,
-        metadata={"help": "rope scaling method, ref: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/configuration_llama.py#L29"}
+        metadata={"help": "rope scaling method, options: ['linear', 'dynamic'], ref: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/configuration_llama.py#L29"}  # noqa
     )
     
     flash_attn: Optional[bool] = field(
