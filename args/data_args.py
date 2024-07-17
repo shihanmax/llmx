@@ -1,7 +1,10 @@
+import logging
 import os
 import json
 from typing import List, Literal, Optional
 from dataclasses import dataclass, field
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

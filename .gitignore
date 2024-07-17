@@ -25,6 +25,9 @@ docs/build/html/*
 .idea/
 *.bin
 
+resource/data/*
+
 debugging/
 test/
 notes.md
+test.ipynb
