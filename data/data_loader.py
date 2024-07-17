@@ -148,7 +148,7 @@ def prepare_data(model_args, data_args, finetuning_args, tokenizer):
     
     base_dir = os.path.abspath(os.path.dirname(__file__))
     dataset_path = os.path.join(
-        base_dir, "../resources/data", data_args.dataset_name,
+        base_dir, "../resource/data", data_args.dataset_name,
     )
     
     if not os.path.exists(dataset_path):

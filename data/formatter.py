@@ -119,8 +119,18 @@ class Formatter(object):
         return string_pairs
 
 
-def register_format(name, system, prompt, sep=None):
-    CHAT_FORMAT_MAPPER[name] = Formatter(name, system, prompt, sep)
+def register_format(name, system=None, prompt=None, sep=None, _copy_from=None):
+    if not system:
+        system = []
+
+    if not prompt:
+        prompt = []
+        
+    if _copy_from:
+        assert _copy_from in CHAT_FORMAT_MAPPER, f"{_copy_from} not exists!"
+        CHAT_FORMAT_MAPPER[name] = CHAT_FORMAT_MAPPER[_copy_from]
+    else:
+        CHAT_FORMAT_MAPPER[name] = Formatter(name, system, prompt, sep)
 
 
 # bare formatter
@@ -214,4 +224,10 @@ register_format(
     prompt=[
         Token("<reserved_106>"), String("{{query}}"), Token("<reserved_107>"),
     ],
+)
+
+# qwen2: https://huggingface.co/Qwen/Qwen2-7B-Instruct/blob/main/tokenizer_config.json
+register_format(
+    name="qwen2",
+    _copy_from="qwen",
 )
