@@ -3,7 +3,11 @@ import math
 
 import torch
 from accelerate import Accelerator
-from peft import LoraConfig, TaskType, get_peft_model, PeftModel
+from peft import (
+    LoraConfig, TaskType, get_peft_model, PeftModel,
+    prepare_model_for_kbit_training,
+)
+
 from transformers import (
     AutoConfig, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
 )
@@ -17,12 +21,13 @@ def scaling_rope(config, model_args, data_args):
         - https://github.com/hiyouga/LLaMA-Factory/blob/main/src/llamafactory/model/model_utils/rope.py
     """
     if not model_args.rope_scaling:
-        logger.info(f"Will not scaling RoPE")
+        logger.info(f"will not scale RoPE")
         return
     
     if not hasattr(config, "rope_scaling"):
         logger.warning(f"curr model not support RoPE scaling")
-    
+        return 
+
     scaling_factor = 1.0
     if data_args.max_seq_len:
         # curr_max_len: max position embedding base model supports
@@ -39,7 +44,7 @@ def scaling_rope(config, model_args, data_args):
                 )
             else:
                 logger.warning(
-                    "curr model already supportted max len: "
+                    "curr model already support max len: "
                     f"{data_args.max_seq_len}"
                 )
     setattr(
@@ -65,11 +70,7 @@ class ModelLoader(object):
         scaling_rope(config, model_args, data_args)
     
     @classmethod
-    def load_config_and_tokenizer(cls, model_args, data_args):
-        default_args = {
-            "trust_remote_code": True,
-            "cache_dir": model_args.cache_dir,
-        }
+    def load_config_and_tokenizer(cls, model_args, data_args, default_args):
 
         config = AutoConfig.from_pretrained(
             model_args.model_name_or_path, **default_args
@@ -93,9 +94,17 @@ class ModelLoader(object):
     def _load(
         cls, model_args, training_args, finetuning_args, data_args, peft_args,
     ):
-        config, tokenizer = cls.load_config_and_tokenizer(model_args, data_args)
-        
+        default_args = {
+            "trust_remote_code": True,
+            "cache_dir": model_args.cache_dir,
+        }
+
+        config, tokenizer = cls.load_config_and_tokenizer(
+            model_args, data_args, default_args,
+        )
+
         if finetuning_args.qlora:
+            logger.info(f"qlora enabled!")
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_quant_type=finetuning_args.bnb_4bit_quant_type,
@@ -106,19 +115,20 @@ class ModelLoader(object):
             model = AutoModelForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 quantization_config=bnb_config,
+                **default_args,
+            )
+
+            model = prepare_model_for_kbit_training(
+                model, use_gradient_checkpointing=training_args.gradient_checkpointing,
             )
 
         else:
-            default_args = {
-                "trust_remote_code": True,
-                "cache_dir": model_args.cache_dir,
-            }
-            
             model = AutoModelForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
                 torch_dtype=torch.float16,
-                device_map={"": Accelerator().process_index},
+                empty_init=False,
+                # device_map={"": Accelerator().process_index},  # ignored by deepspeed
                 **default_args,
             )
 
@@ -135,7 +145,8 @@ class ModelLoader(object):
             )
             model = get_peft_model(model, lora_config)
             model.print_trainable_parameters()
-            
+        
+        model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
         return model, config, tokenizer
 
     @classmethod
@@ -159,12 +170,14 @@ class ModelLoader(object):
             )
         
         model, config, tokenizer = cls._load(
-            model_args, finetuning_args, data_args, peft_args
+            model_args, training_args, finetuning_args, data_args, peft_args,
         )
 
         if finetuning_args.training_stage == "dpo":
             # create a ref model for dpo
-            ref_model, *_ = cls._load(model_args)
+            ref_model, *_ = cls._load(
+                model_args, training_args, finetuning_args, data_args, peft_args,
+            )
         else:
             ref_model = None
     
