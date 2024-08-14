@@ -10,6 +10,7 @@
 | ChatGLM2  | chatglm2  | query_key_value |  ✅     | ✅         |
 | ChatGLM3  | chatglm3  | query_key_value |  ✅     | ✅         |
 | Qwen      | qwen      | c_attn          |  ✅     |             |
+| Qwen2     | qwen      | q_proj,v_proj  |   ✅     |            |
 | Yi        | yi        | q_proj,v_proj   |  ✅     | ✅         |
 | Llama2    | llama2    | q_proj,v_proj   |  ✅     | ✅         |
 
@@ -22,7 +23,7 @@
 |   | requirements |
 |-------|--------------|
 | QLoRA | CUDA>=11.2   |
-|       |              |
+| vllm |   CUDA==11.8,12.1 |
 
 
 ## 快速开始
@@ -41,7 +42,7 @@ cd llmx && pip install -r requirements.txt
 **SFT**
 
 ```bash 
-bash ./scripts/run_sft.sh
+bash ./examples/run_sft.sh
 ```
 
 ```bash
@@ -72,7 +73,7 @@ accelerate launch ../runner/run_train.py \
 **PT**
 
 ```bash 
-bash ./scripts/run_pt.sh
+bash ./examples/run_pt.sh
 ```
 
 ```bash
@@ -102,7 +103,7 @@ accelerate launch ../runner/run_train.py \
 
 **DPO Training**
 ```bash 
-bash ./scripts/run_dpo.sh
+bash ./examples/run_dpo.sh
 ```
 
 ```bash
@@ -135,7 +136,7 @@ accelerate launch ../runner/run_train.py \
 
 **LoRA权重合并**
 ```bash 
-bash ./scripts/run_merge_lora.sh
+bash ./examples/run_merge_lora.sh
 ```
 
 ```bash
@@ -150,7 +151,7 @@ python ../runner/run_merge_lora.py \
 
 **多卡batch推理**
 ```bash 
-bash ./scripts/run_predict.sh
+bash ./examples/run_predict.sh
 ```
 
 ```bash
@@ -166,7 +167,7 @@ python ../runner/run_inference.py \
 
 **Chat（命令行）**
 ```bash 
-bash ./scripts/run_chat.sh
+bash ./examples/run_chat.sh
 ```
 
 ```bash

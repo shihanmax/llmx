@@ -1,5 +1,5 @@
 accelerate config
-accelerate launch ../runner/run_train.py \
+accelerate launch ../task/run_train.py \
     --dataset_name demo_movie_pt \
     --model_name_or_path /path/to/chatglm2-6b \
     --output_dir ../debugging/pt_test \

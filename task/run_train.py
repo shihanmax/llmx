@@ -2,16 +2,32 @@
 import logging
 import sys
 
+from typing import Any, Dict, Union
+
+import torch
+import torch.nn as nn
 from transformers import Trainer, Seq2SeqTrainer
 from trl import DPOTrainer
 
 sys.path.append("../..")
 from llmx.args.parser import parse_args
-from llmx.model.model_loader import ModelLoader 
 from llmx.data.data_loader import prepare_data
+from llmx.model.model_loader import ModelLoader 
 from llmx.utils.patches.dpo_trainer_patch import patch_dpo_trainer
 
+logger = logging.getLogger(__name__)
+
 logging.basicConfig(level=logging.INFO)
+
+
+class MyTrainer(Seq2SeqTrainer):
+
+    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]):
+        # for k, v in inputs.items():
+        #     logger.info(f"{k}: {type(v)}, {v.shape}, {v.device}, {v[:,:50]}")
+
+        res = super().training_step(model, inputs)
+        return res
 
 
 def get_trainer(finetuning_args):
@@ -20,7 +36,7 @@ def get_trainer(finetuning_args):
         return Trainer
 
     elif stage == "sft":  # supervised finetuning
-        return Seq2SeqTrainer
+        return MyTrainer
 
     elif stage == "dpo":  # dpo
         patch_dpo_trainer(DPOTrainer)
@@ -34,7 +50,7 @@ training_args, data_args, finetuning_args, generating_args, model_args, \
     peft_args = parse_args(on_train=True)
 
 # 2. prepare model, tokenizer, etc,.
-ref_model, model, tokenizer = ModelLoader.prepare_model(
+ref_model, model, tokenizer = ModelLoader.load(
     model_args, training_args, finetuning_args, data_args, peft_args, 
 )
 

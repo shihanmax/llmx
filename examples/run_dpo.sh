@@ -1,5 +1,5 @@
 accelerate config
-accelerate launch ../runner/run_train.py \
+accelerate launch ../task/run_train.py \
     --dataset_name demo_dpo \
     --model_name_or_path /path/to/chatglm2-6b \
     --chat_format chatglm2 \

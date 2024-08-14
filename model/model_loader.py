@@ -14,6 +14,7 @@ from transformers import (
 
 logger = logging.getLogger(__name__)
 
+
 def scaling_rope(config, model_args, data_args):
     """
     ref: 
@@ -127,8 +128,8 @@ class ModelLoader(object):
                 model_args.model_name_or_path,
                 config=config,
                 torch_dtype=torch.float16,
-                empty_init=False,
-                # device_map={"": Accelerator().process_index},  # ignored by deepspeed
+                # empty_init=False,
+                device_map={"": Accelerator().process_index},  # ignored by deepspeed
                 **default_args,
             )
 
@@ -150,7 +151,7 @@ class ModelLoader(object):
         return model, config, tokenizer
 
     @classmethod
-    def prepare_model(
+    def load(
         cls, model_args, training_args, finetuning_args, data_args, peft_args, 
     ):
         """Prepare model and tokenizer."""
