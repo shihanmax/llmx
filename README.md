@@ -4,7 +4,7 @@
 
 
 支持：
-- Lora、QLoRA
+- LoRA、QLoRA
 - 通过开启Sequence parallel（序列并行）以支持高达 256K 序列长度的全参数微调
 - 通过 RoPE scaling 进行序列长度扩展
 - VLLM 推理部署
@@ -57,7 +57,7 @@ bash ./scripts/run_sft.sh
 2. 在各节点上运行以下命令
 
 ```bash 
-bash ./scripts/run_sft.sh
+bash ./scripts/run_sft_multi_node.sh
 ```
 
 **PT**
