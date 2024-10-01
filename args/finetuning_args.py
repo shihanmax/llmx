@@ -89,6 +89,11 @@ class FinetuningArguments:
         default=8,
         metadata={"help": ""}
     )
+        
+    with_debugging_model: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Load a smaller size model for debugging"}
+    )
 
     def __post_init__(self):
         if re.findall(r"^\d+$", self.device_ids):

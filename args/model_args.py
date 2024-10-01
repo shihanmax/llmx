@@ -32,8 +32,13 @@ class ModelArguments:
         metadata={"help": "rope scaling method, options: ['linear', 'dynamic'], ref: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/configuration_llama.py#L29"}  # noqa
     )
     
+    rope_scaling_factor: Optional[float] = field(
+        default=None,
+        metadata={"help": "rope scaling factor"}
+    )
+
     flash_attn: Optional[bool] = field(
-        default=False,
+        default=True,
         metadata={"help": ""}
     )
 
@@ -42,8 +47,13 @@ class ModelArguments:
         metadata={"help": "ref. https://github.com/dvlab-research/LongLORA"}
     )
 
+    sequence_parallel_size: Optional[int] = field(
+        default=1,
+        metadata={"help": "set > 1 to enable sequence parallel for training tasks with extreme long context"}
+    )
+
     def __post_init__(self):
-        if "yi-" in self.model_name_or_path. lower():
+        if "yi-" in self.model_name_or_path.lower():
             # TODO: 需要更正式
             self.use_fast_tokenizer = False  # YI
             logger.info(

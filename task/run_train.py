@@ -2,48 +2,17 @@
 import logging
 import sys
 
-from typing import Any, Dict, Union
-
-import torch
-import torch.nn as nn
-from transformers import Trainer, Seq2SeqTrainer
-from trl import DPOTrainer
 
 sys.path.append("../..")
 from llmx.args.parser import parse_args
 from llmx.data.data_loader import prepare_data
 from llmx.model.model_loader import ModelLoader 
-from llmx.utils.patches.dpo_trainer_patch import patch_dpo_trainer
+from llmx.trainer.trainer import prepare_trainer
+
 
 logger = logging.getLogger(__name__)
 
-logging.basicConfig(level=logging.INFO)
-
-
-class MyTrainer(Seq2SeqTrainer):
-
-    def training_step(self, model: nn.Module, inputs: Dict[str, Union[torch.Tensor, Any]]):
-        # for k, v in inputs.items():
-        #     logger.info(f"{k}: {type(v)}, {v.shape}, {v.device}, {v[:,:50]}")
-
-        res = super().training_step(model, inputs)
-        return res
-
-
-def get_trainer(finetuning_args):
-    stage = finetuning_args.training_stage
-    if stage == "pt":  # pretrain
-        return Trainer
-
-    elif stage == "sft":  # supervised finetuning
-        return MyTrainer
-
-    elif stage == "dpo":  # dpo
-        patch_dpo_trainer(DPOTrainer)
-        return DPOTrainer
-    else:
-        raise Exception(f"training stage: {stage} is not supported for now.")
-
+logging.basicConfig(level=logging.DEBUG)
 
 # 1. parse args
 training_args, data_args, finetuning_args, generating_args, model_args, \
@@ -59,27 +28,10 @@ train_dataset, eval_dataset, data_collator = prepare_data(
     model_args, data_args, finetuning_args, tokenizer,
 )
 
-trainer_class = get_trainer(finetuning_args)
-
-if finetuning_args.training_stage == "dpo":
-    ext_args = {
-        "ref_model": ref_model,
-        "beta": finetuning_args.dpo_beta,
-        "loss_type": finetuning_args.dpo_loss_type,
-    }
-else:
-    ext_args = {}
-    
 # 4. prepare trainer
-trainer = trainer_class(
-    model=model,
-    args=training_args,
-    data_collator=data_collator,
-    train_dataset=train_dataset,
-    eval_dataset=train_dataset,
-    tokenizer=tokenizer,
-    callbacks=[],
-    **ext_args,
+trainer = prepare_trainer(
+    finetuning_args, training_args, model_args, model, ref_model, tokenizer, 
+    train_dataset, eval_dataset, data_collator,
 )
 
 # 5. train / save / evaluate

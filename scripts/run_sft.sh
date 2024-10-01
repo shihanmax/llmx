@@ -1,0 +1,25 @@
+python -m torch.distributed.run --nproc_per_node=2 ../task/run_train.py \
+    --dataset_name longsum \
+    --model_name_or_path /model_hub/Qwen1.5-32B-Chat \
+    --chat_format qwen \
+    --output_dir ../debugging/0906_longsum_qwen32b_full_maxlen32k \
+    --training_stage sft \
+    --parameter_mode full \
+    --lora_target q_proj,v_proj \
+    --do_train true \
+    --rope_scaling linear \
+    --max_seq_len 16000 \
+    --sequence_parallel_size 8 \
+    --learning_rate 2e-5 \
+    --warmup_ratio 0.1 \
+    --lr_scheduler_type cosine \
+    --num_train_epochs 2.0 \
+    --save_steps 1000 \
+    --report_to tensorboard \
+    --logging_steps 1 \
+    --ddp_find_unused_parameters false \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 1 \
+    --overwrite_output_dir \
+    --fp16 \
+    --deepspeed ../resource/ds_config/ds_z3_offload.json

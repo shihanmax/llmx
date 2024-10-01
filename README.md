@@ -1,18 +1,25 @@
 # LLMX
 
-开源大模型（LLM）微调工具，目前支持ChatGLM、百川、Llama、Qwen、Yi等开源大模型的预训练、微调和推理。
+开源大模型（LLM）微调工具，目前支持 Qwen/Qwen1.5/Qwen2.5、ChatGLM2/3、Baichuan、Llama、Yi等开源大模型的预训练、微调和推理。
+
+
+支持：
+- Lora、QLoRA
+- 通过开启Sequence parallel（序列并行）以支持高达 256K 序列长度的全参数微调
+- 通过 RoPE scaling 进行序列长度扩展
+- VLLM 推理部署
 
 
 ## 模型支持
-| Model     | chat_format | lora target     |  train | inference |
-|-----------|-----------|-----------------| -------|-----------|
-| Baichuan2 | baichuan2 | W_pack          |  ✅     | ✅         |
-| ChatGLM2  | chatglm2  | query_key_value |  ✅     | ✅         |
-| ChatGLM3  | chatglm3  | query_key_value |  ✅     | ✅         |
-| Qwen      | qwen      | c_attn          |  ✅     |             |
-| Qwen2     | qwen      | q_proj,v_proj  |   ✅     |            |
-| Yi        | yi        | q_proj,v_proj   |  ✅     | ✅         |
-| Llama2    | llama2    | q_proj,v_proj   |  ✅     | ✅         |
+| Model         | chat_format | lora target     | train | inference |
+|---------------|-------------|-----------------|-------|-----------|
+| Baichuan2     | baichuan2   | W_pack          | ✅     | ✅         |
+| ChatGLM2      | chatglm2    | query_key_value | ✅     | ✅         |
+| ChatGLM3      | chatglm3    | query_key_value | ✅     | ✅         |
+| Qwen          | qwen        | c_attn          | ✅     | ✅         |
+| Qwen2/Qwen2.5 | qwen        | q_proj,v_proj   | ✅     | ✅         |
+| Yi            | yi          | q_proj,v_proj   | ✅     | ✅         |
+| Llama2        | llama2      | q_proj,v_proj   | ✅     | ✅         |
 
 
 支持Chat models对应的base版本（请将参数`chat_format`参数设置为`base`）。
@@ -20,15 +27,15 @@
 
 **版本要求**
 
-|   | requirements |
-|-------|--------------|
-| QLoRA | CUDA>=11.2   |
-| vllm |   CUDA==11.8,12.1 |
-
+| features          | requirements      | ref.                                                             |
+|-------------------|-------------------|------------------------------------------------------------------|
+| QLoRA             | CUDA>=11.2        |                                                                  |
+| vllm              | CUDA==11.8,12.1   | https://docs.vllm.ai/en/latest/getting_started/installation.html |
+| sequence parallel | flash-attn>=2.1.0 |                                                                  |
 
 ## 快速开始
 
-**环境安装**
+**依赖安装**
 
 ```bash
 conda create -n llmx python==3.9 && conda activate llmx
@@ -36,146 +43,55 @@ git clone https://github.com/shihanmax/llmx.git
 cd llmx && pip install -r requirements.txt
 ```
 
-
 参考下文`训练数据格式`准备训练数据（目前支持sft（有监督微调）、pt（预训练）、dpo（直接偏好优化）），示例数据分别对应着`llmx/resource/data/`目录下的sft_demo、pt_demo、dpo_demo。
 
-**SFT**
+**SFT（单机多卡）**
 
 ```bash 
-bash ./examples/run_sft.sh
+bash ./scripts/run_sft.sh
 ```
 
-```bash
-accelerate config
-accelerate launch ../runner/run_train.py \
-    --dataset_name sft_demo \
-    --model_name_or_path /path/to/plm_path \
-    --output_dir ../debugging/checkpoint_path \
-    --training_stage sft \
-    --parameter_mode lora \
-    --lora_target query_key_value \
-    --max_seq_len 5000 \
-    --do_train true \
-    --learning_rate 5e-4 \
-    --num_train_epochs 5.0 \
-    --lr_scheduler_type cosine \
-    --save_steps 10 \
-    --report_to tensorboard \
-    --logging_steps 2 \
-    --ddp_find_unused_parameters false \
-    --per_device_train batch size 2 \
-    --gradient_accumulation_steps 4 \
-    --overwrite_output_dir \
-    --fp16
-```
+**SFT（多机多卡）**
 
+1. 建立各节点之间的 ssh 通信
+2. 在各节点上运行以下命令
+
+```bash 
+bash ./scripts/run_sft.sh
+```
 
 **PT**
 
 ```bash 
-bash ./examples/run_pt.sh
+bash ./scripts/run_pt.sh
 ```
-
-```bash
-accelerate config
-accelerate launch ../runner/run_train.py \
-    --dataset_name pt_demo \
-    --model_name_or_path /path/to/plm \
-    --output_dir ../debugging/pt_test \
-    --training_stage pt \
-    --parameter_mode lora \
-    --lora_target query_key_value \
-    --max_seq_len 5000 \
-    --do_train true \
-    --learning_rate 5e-4 \
-    --num_train_epochs 10.0 \
-    --lr_scheduler_type cosine \
-    --save_steps 10 \
-    --report_to tensorboard \
-    --logging_steps 2 \
-    --ddp_find_unused_parameters false \
-    --per_device_train_batch_size 2 \
-    --gradient_accumulation_steps 4 \
-    --overwrite_output_dir \
-    --fp16
-```
-
 
 **DPO Training**
 ```bash 
-bash ./examples/run_dpo.sh
-```
-
-```bash
-accelerate config
-accelerate launch ../runner/run_train.py \
-    --dataset_name dpo_demo \
-    --model_name_or_path /path/to/plm \
-    --chat_format chatglm2 \
-    --output_dir ../debugging/_dpo_test \
-    --training_stage dpo \
-    --dpo_beta 0.1 \
-    --dpo_loss_type sigmoid \
-    --parameter_mode lora \
-    --lora_target query_key_value \
-    --max_seq_len 3000 \
-    --do_train true \
-    --learning_rate 5e-4 \
-    --num_train_epochs 5.0 \
-    --lr_scheduler_type cosine \
-    --save_steps 100 \
-    --report_to tensorboard \
-    --logging_steps 10 \
-    --ddp_find_unused_parameters false \
-    --per_device_train_batch_size 2 \
-    --gradient_accumulation_steps 2 \
-    --remove_unused_columns false \
-    --overwrite_output_dir \
-    --fp16
+bash ./scripts/run_dpo.sh
 ```
 
 **LoRA权重合并**
 ```bash 
-bash ./examples/run_merge_lora.sh
+bash ./scripts/run_merge_lora.sh
 ```
-
-```bash
-export CUDA_VISIBLE_DEVICES=0
-
-python ../runner/run_merge_lora.py \
-    --model_name_or_path /path/to/plm \
-    --checkpoint_dir /path/to/ckpt/checkpoint-xxx \
-    --merged_dir /path/to/merged
-```
-
 
 **多卡batch推理**
 ```bash 
-bash ./examples/run_predict.sh
+bash ./scripts/run_predict.sh
 ```
 
-```bash
-python ../runner/run_inference.py \
-    --model_name_or_path path/to/merged_model \
-    --device_ids "0-8" \
-    --chat_format baichuan2 \
-    --predict_file_path path/to/predict_data.json \
-    --save_predict_result_to path/to/predict_result.json \
-    --per_device_predict_batch_size 12 \
-    --predict_dry_run_size 0
+
+**vllm 推理** 
+
+启动 vllm 服务
+```bash 
+bash ./scripts/serve_vllm_openai.sh
 ```
 
 **Chat（命令行）**
 ```bash 
-bash ./examples/run_chat.sh
-```
-
-```bash
-python ../runner/run_generate.py \
-  --model_name_or_path /path/to/plm \
-  --chat_format chatglm2 \
-  --topk 3 \
-  --temperature 0.5
+bash ./scripts/run_chat.sh
 ```
 
 

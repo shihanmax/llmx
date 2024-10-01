@@ -11,55 +11,21 @@ from peft import (
 from transformers import (
     AutoConfig, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
 )
+from transformers.utils.import_utils import is_flash_attn_2_available
+
+from ..utils.patches.rope_patch.patch import adopt_rope_config
+from ..utils.patches.rope_patch.qwen2_rope_patch import patch_qwen2_rope_scaling
+from ..utils.patches.sequence_parallel import patch_attention_for_qwen2
 
 logger = logging.getLogger(__name__)
 
 
-def scaling_rope(config, model_args, data_args):
-    """
-    ref: 
-        - https://www.reddit.com/r/LocalLLaMA/comments/14mrgpr/dynamically_scaled_rope_further_increases/
-        - https://github.com/hiyouga/LLaMA-Factory/blob/main/src/llamafactory/model/model_utils/rope.py
-    """
-    if not model_args.rope_scaling:
-        logger.info(f"will not scale RoPE")
-        return
-    
-    if not hasattr(config, "rope_scaling"):
-        logger.warning(f"curr model not support RoPE scaling")
-        return 
-
-    scaling_factor = 1.0
-    if data_args.max_seq_len:
-        # curr_max_len: max position embedding base model supports
-        curr_max_len = getattr(config, "max_position_embedding", None)
-        
-        if curr_max_len:
-            if data_args.max_seq_len > curr_max_len:
-                logger.info(f"extend model max len to:{data_args.max_seq_len}")
-                setattr(
-                    config, "max_position_embedding", data_args.max_seq_len,
-                )
-                scaling_factor = float(
-                    math.ceil(data_args.max_seq_len / curr_max_len)
-                )
-            else:
-                logger.warning(
-                    "curr model already support max len: "
-                    f"{data_args.max_seq_len}"
-                )
-    setattr(
-        config, "rope_scaling", 
-        {"type": model_args.rope_scaling, "factor": scaling_factor},
-    )
-    logger.info(f"adopt scaling factor: {scaling_factor}")
-    
-        
 class ModelLoader(object):
 
     @classmethod
     def patch_tokenizer(cls, tokenizer):
         """inplace op"""
+        logger.info("patching tokenizer..")
         if tokenizer.eos_token_id is None:
             tokenizer.eos_token = "<|endoftext|>"
             
@@ -68,8 +34,34 @@ class ModelLoader(object):
 
     @classmethod
     def patch_config(cls, config, model_args, data_args):
-        scaling_rope(config, model_args, data_args)
-    
+        logger.info("patching config..")
+
+        # patch RoPE scaling
+        adopt_rope_config(config, model_args, data_args)
+
+        # patch fa2 TODO: 更合理的 FA2设置方式
+        if hasattr(config, "_attn_implementation"):
+            setattr(config, "_attn_implementation", "flash_attention_2")
+
+    @classmethod
+    def patch_model(cls, model, config, model_args, training_args):
+        logger.info("patching model..")
+        
+        # patch rope scaling
+        # patch_qwen2_rope_scaling(model, config)  # inplace op
+
+        # patch attention forward for sequence parallel
+        if model_args.sequence_parallel_size > 1:  
+            logger.info(f"patching model for sequence parallel")
+            patch_attention_for_qwen2(model)
+
+        if training_args.gradient_checkpointing:
+            # enable gradient checkpointing
+            model.gradient_checkpointing_enable()
+            logger.info(f"gradient checkpointing enabled")
+
+        return model
+
     @classmethod
     def load_config_and_tokenizer(cls, model_args, data_args, default_args):
 
@@ -89,23 +81,18 @@ class ModelLoader(object):
         
         cls.patch_tokenizer(tokenizer)
         
+        logger.info("config and tokenizer loaded")
         return config, tokenizer
     
     @classmethod
-    def _load(
-        cls, model_args, training_args, finetuning_args, data_args, peft_args,
+    def load_model(
+        cls, config, model_args, training_args, finetuning_args, peft_args,
+        default_args,
     ):
-        default_args = {
-            "trust_remote_code": True,
-            "cache_dir": model_args.cache_dir,
-        }
-
-        config, tokenizer = cls.load_config_and_tokenizer(
-            model_args, data_args, default_args,
-        )
+        logger.info(f"loading model..")
 
         if finetuning_args.qlora:
-            logger.info(f"qlora enabled!")
+            logger.info("qlora enabled!")
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_quant_type=finetuning_args.bnb_4bit_quant_type,
@@ -119,19 +106,26 @@ class ModelLoader(object):
                 **default_args,
             )
 
+            model = cls.patch_model(model, config, model_args, training_args)
             model = prepare_model_for_kbit_training(
-                model, use_gradient_checkpointing=training_args.gradient_checkpointing,
+                model, 
+                use_gradient_checkpointing=training_args.gradient_checkpointing,  # noqa
             )
 
         else:
+            device_map = {"": Accelerator().process_index} if training_args.deepspeed is None \
+                else None
+
             model = AutoModelForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
                 torch_dtype=torch.float16,
-                # empty_init=False,
-                device_map={"": Accelerator().process_index},  # ignored by deepspeed
+                device_map=device_map,
+                low_cpu_mem_usage=False,  # TODO: zero3时设置为 False，同时删去 device_map参数/或者设置为 None
                 **default_args,
             )
+
+            model = cls.patch_model(model, config, model_args, training_args)
 
         # patch LoRA
         if finetuning_args.parameter_mode == "lora":
@@ -148,7 +142,43 @@ class ModelLoader(object):
             model.print_trainable_parameters()
         
         model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-        return model, config, tokenizer
+
+        return model
+
+    @classmethod
+    def load_model_for_debugging(cls, model_args, data_args, training_args):
+        logger.debug(f"Qwen2 model for DEBUGGING loaded!")
+
+        from transformers import Qwen2ForCausalLM, Qwen2Config
+
+        conf = Qwen2Config(
+            hidden_size=160,
+            intermediate_size=100,
+            num_hidden_layers=1,
+            num_attention_heads=8,
+            num_key_value_heads=1,
+            hidden_act="silu",
+            max_position_embeddings=8192,
+            initializer_range=0.02,
+            rms_norm_eps=1e-6,
+            use_cache=True,
+            tie_word_embeddings=False,
+            rope_theta=10000.0,
+            use_sliding_window=False,
+            max_window_layers=1,
+            attention_dropout=0.0,
+            rope_scaling=None,
+            _attn_implementation="flash_attention_2",  # flash_attention_2
+            torch_dtype=torch.float16,
+        )
+
+        cls.patch_config(conf, model_args, data_args)
+        # conf.torch_dtype = torch.float16
+
+        model = Qwen2ForCausalLM(conf)
+        model = cls.patch_model(model, conf, model_args, training_args)
+
+        return model
 
     @classmethod
     def load(
@@ -158,6 +188,7 @@ class ModelLoader(object):
 
         do_train = training_args.do_train
         
+        # WARN: maybe deprecated
         if model_args.flash_attn:    
             from ..utils.patches.llama_attention_patch import patch_llama_attn
             patch_llama_attn(
@@ -170,14 +201,29 @@ class ModelLoader(object):
                 use_flash_attn=True, use_full=False, inference=not do_train
             )
         
-        model, config, tokenizer = cls._load(
-            model_args, training_args, finetuning_args, data_args, peft_args,
+        default_args = {
+            "trust_remote_code": True,
+            "cache_dir": model_args.cache_dir,
+        }
+
+        config, tokenizer = cls.load_config_and_tokenizer(
+            model_args, data_args, default_args,
         )
+
+        if finetuning_args.with_debugging_model:
+            logger.debug("loading a smaller size model for debugging")
+            model = cls.load_model_for_debugging(model_args, data_args, training_args)
+        else:
+            model = cls.load_model(
+                config, model_args, training_args, finetuning_args, peft_args,
+                default_args,
+            )
 
         if finetuning_args.training_stage == "dpo":
             # create a ref model for dpo
-            ref_model, *_ = cls._load(
-                model_args, training_args, finetuning_args, data_args, peft_args,
+            ref_model, *_ = cls.load_model(
+                model_args, training_args, finetuning_args, data_args, 
+                peft_args,
             )
         else:
             ref_model = None

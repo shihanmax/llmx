@@ -1,3 +1,8 @@
+import logging
+
+
+logger = logging.getLogger(__name__)
+
 CHAT_FORMAT_MAPPER = {}
 
 
@@ -25,7 +30,7 @@ class String(ChatElement):
         for k, v in format_kws.items():
             quoted_kw = "{{" + k + "}}"
             content = content.replace(quoted_kw, str(v))
-            
+        
         return tokenizer.encode(content, **tokenizer_args)
     
 
@@ -47,32 +52,48 @@ class Formatter(object):
             )
             
     def truncate(self, query_ids, resp_ids, max_seq_len):
+        """Truncate query_ids and resp_ids pair given max_seq_len
+
+        :returns
+            truncated (bool): mark if inputs was truncated
+            query_ids (List[int]): trunceted query_ids
+            resp_ids (List[int]): truncated resp_ids
+        """
         query_len = len(query_ids)
+
+        if query_len <= max_seq_len:
+            return False, query_ids, resp_ids
+        
         resp_len = len(resp_ids)
-        
-        if query_len + resp_len <= max_seq_len:
-            return query_ids, resp_ids
-        
-        overflow_len = query_len + resp_len - max_seq_len
-        query_cutoff = overflow_len // 2
-        resp_cutoff = overflow_len - query_cutoff
-        query_ids = query_ids[: -query_cutoff]
-        resp_ids = resp_ids[: -resp_cutoff]
-        return query_ids, resp_ids
+        if resp_len > 0:
+            assert query_len == resp_len, (
+                f"query ({query_len}) and resp ({resp_len}) length mismatch!"
+            )
+
+            # TODO: 大概率会丢掉template 部分内容，此种截断方式不合理
+            query_ids = query_ids[-max_seq_len:]
+            resp_ids = resp_ids[-max_seq_len:]
+        else:
+            query_ids = query_ids[-max_seq_len:]
+
+        return True, query_ids, resp_ids
     
     def format_to_ids(self, tokenizer, max_seq_len, **fmt_kws):
         """multi-turn formatter"""
         history = fmt_kws.get("history", [])
+
         sessions = history + [[fmt_kws["query"], fmt_kws["response"]]]
         self._check_session(sessions)
         
         inputs = []
         data_pairs = []
         response_ids = []
+
+        strings = []
         
         for element in self.system:
             inputs += element.to_ids(tokenizer=tokenizer, **fmt_kws)
-            
+
         for round_idx, (query, response) in enumerate(sessions):
             if round_idx > 0:
                 if self.sep:
@@ -95,28 +116,30 @@ class Formatter(object):
                 )
                 
                 response_ids = [i for i in curr_output]
-                
+
             query_ids = [i for i in inputs]
             
-            query_ids, response_ids = self.truncate(
+            is_truncated, query_ids, response_ids = self.truncate(
                 query_ids, response_ids, max_seq_len,
             )
+
             data_pairs.append([query_ids, response_ids])
-            
+
+            if is_truncated:
+                break
+
         return data_pairs
     
     def format_to_str(self, tokenizer, max_seq_len, **fmt_kws):
         """for debugging"""
-        data_pairs = self.format_to_ids(tokenizer, max_seq_len, **fmt_kws)
-        decoding_args = {"skip_special_tokens": True}
-        string_pairs = []
-        
-        for pair in data_pairs:
-            pair[1] = [i for i in pair[1] if i >= 0]
-            string_pairs.append(
-                [tokenizer.decode(p, **decoding_args) for p in pair]
-            )
-        return string_pairs
+
+        session_ids = self.format_to_ids(tokenizer, max_seq_len, **fmt_kws)
+
+        session_strings = [
+            tokenizer.batch_decode(sess) for sess in session_ids
+        ]
+
+        return session_strings
 
 
 def register_format(name, system=None, prompt=None, sep=None, _copy_from=None):

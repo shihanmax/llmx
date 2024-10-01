@@ -1,13 +1,19 @@
 import os
+import logging
 from itertools import chain
 
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from transformers import (
     DataCollatorForSeq2Seq, DataCollatorForLanguageModeling,
 )
+import torch.distributed as dist
 from trl.trainer.utils import DPODataCollatorWithPadding
 
 from .formatter import CHAT_FORMAT_MAPPER
+from ..utils import is_rank_zero
+
+
+logger = logging.getLogger(__name__)
 
 
 def post_process_dataset(dataset, data_args, tokenizer, stage):
@@ -43,12 +49,12 @@ def post_process_dataset(dataset, data_args, tokenizer, stage):
                 inputs["input_ids"].append(query_ids)
                 inputs["attention_mask"].append([1] * len(query_ids))
                 inputs["labels"]. append(response_ids)
-                
+
         return inputs
 
     def process_fn_pt(examples, tokenizer, max_seq_len):
         """for pre-training.
-        We suggest to store the raw sequence in a field named "raw".
+        We suggest to store the original sequence in a field named "raw".
         """
         # TODO: support tokenizer for other models like llama_factory does
         tokenizer_args = {"add_special_tokens": True}
@@ -142,49 +148,70 @@ def post_process_dataset(dataset, data_args, tokenizer, stage):
 
 def prepare_data(model_args, data_args, finetuning_args, tokenizer):
     """Prepare dataset, collator for sft / pt / dpo"""
-    
-    stage = finetuning_args.training_stage
-    assert stage in ["sft", "pt", "dpo"], f"Invalid training stage: {stage}"
-    
-    base_dir = os.path.abspath(os.path.dirname(__file__))
-    dataset_path = os.path.join(
-        base_dir, "../resource/data", data_args.dataset_name,
-    )
-    
-    if not os.path.exists(dataset_path):
-        raise Exception(
-            f"there exists no dataset named {data_args.dataset_name} at "
-            f"{dataset_path}"
+
+    if True:
+        stage = finetuning_args.training_stage
+        assert stage in ["sft", "pt", "dpo"], f"Invalid training stage: {stage}"
+        
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+        dataset_path = os.path.join(
+            base_dir, "../resource/data", data_args.dataset_name,
         )
         
-    train_dataset = load_dataset(
-        path=dataset_path,
-        name=data_args.dataset_name,
-        data_files=None,
-        split=data_args.split,
-        cache_dir=model_args.cache_dir
-    )
-    
-    train_dataset = post_process_dataset(
-        train_dataset, data_args, tokenizer, stage=stage,
-    )
-    
-    if stage == "sft":
-        data_collator = DataCollatorForSeq2Seq(
-            tokenizer=tokenizer,
-            label_pad_token_id=-100,
+        if not os.path.exists(dataset_path):
+            raise Exception(
+                f"there exists no dataset named {data_args.dataset_name} at "
+                f"{dataset_path}"
+            )
+        
+        logger.info(f"loading dataset from {dataset_path} ..")
+
+        train_dataset = load_dataset(
+            path=dataset_path,
+            name=data_args.dataset_name,
+            split=data_args.split,
+            cache_dir=model_args.cache_dir,
         )
         
-    elif stage == "pt":
-        data_collator = DataCollatorForLanguageModeling(
-            tokenizer=tokenizer,
-            mlm=False,
+        train_dataset = post_process_dataset(
+            train_dataset, data_args, tokenizer, stage=stage,
         )
-        
-    elif stage == "dpo":
-        data_collator = DPODataCollatorWithPadding()
-        
-    else:
-        raise Exception(f"Invalid training stage: {stage}")
+
+        # pad for sequence parallel
+        if model_args.sequence_parallel_size > 1:
+            pad_to_multiple_of = model_args.sequence_parallel_size
+        else:
+            pad_to_multiple_of = None
+
+        if stage == "sft":
+            data_collator = DataCollatorForSeq2Seq(
+                tokenizer=tokenizer,
+                label_pad_token_id=-100,
+                pad_to_multiple_of=pad_to_multiple_of,
+            )
+            
+        elif stage == "pt":
+            data_collator = DataCollatorForLanguageModeling(
+                tokenizer=tokenizer,
+                mlm=False,
+                pad_to_multiple_of=pad_to_multiple_of,
+            )
+            
+        elif stage == "dpo":
+            # note: DPODataCollatorWithPadding does not (or not support) 
+            # pad_to_multiple_of: 
+            # https://github.com/huggingface/trl/blob/0cda2f2f019a8e1f7d97742fc3e5634a7a727791/trl/trainer/utils.py#L359
+            data_collator = DPODataCollatorWithPadding()
+            
+        else:
+            raise Exception(f"Invalid training stage: {stage}")
+            
+        data = [train_dataset, None, data_collator]
+    # else:
+    #     data = [None, None, None]
     
-    return train_dataset, None, data_collator
+    # if dist.is_initialized():
+    #     dist.barrier()
+    #     dist.broadcast_object_list(data, src=0)
+        
+    return data
