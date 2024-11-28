@@ -221,6 +221,29 @@ register_format(
     ],
 )
 
+
+# qwen2: https://huggingface.co/Qwen/Qwen2-7B-Instruct/blob/main/tokenizer_config.json
+register_format(
+    name="qwen2",
+    _copy_from="qwen",
+)
+
+
+# https://github.com/QwenLM/Qwen/blob/main/finetune.py#L125
+register_format(
+    name="qwen2_5",
+    system=[
+        Token("<|im_start|>"), String(
+            "system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant."
+        ),
+        Token("<|im_end|>"), String("\n"),
+    ],
+    prompt=[
+        Token("<|im_start|>"), String("user\n{{query}}"), Token("<|im_end|>"),
+        String("\n"), Token("<|im_start|>"), String("assistant\n"),
+    ],
+)
+
 # https://github.com/01-ai/Yi?tab=readme-ov-file#31-use-the-chat-model
 register_format(
     name="yi",
@@ -247,10 +270,4 @@ register_format(
     prompt=[
         Token("<reserved_106>"), String("{{query}}"), Token("<reserved_107>"),
     ],
-)
-
-# qwen2: https://huggingface.co/Qwen/Qwen2-7B-Instruct/blob/main/tokenizer_config.json
-register_format(
-    name="qwen2",
-    _copy_from="qwen",
 )
