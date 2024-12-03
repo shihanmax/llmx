@@ -113,15 +113,17 @@ class ModelLoader(object):
             )
 
         else:
-            device_map = {"": Accelerator().process_index} if training_args.deepspeed is None \
-                else None
+            if training_args.deepspeed is None:
+                low_cpu_mem_usage = True
+            else:
+                low_cpu_mem_usage = False
 
             model = AutoModelForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
-                torch_dtype=torch.float16,
-                device_map=device_map,
-                low_cpu_mem_usage=False,  # TODO: zero3时设置为 False，同时删去 device_map参数/或者设置为 None
+                torch_dtype=torch.bfloat16,
+                device_map=None,
+                low_cpu_mem_usage=low_cpu_mem_usage,
                 **default_args,
             )
 
